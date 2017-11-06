@@ -51,6 +51,25 @@ UKF::UKF() {
 
   Hint: one or more values initialized above might be wildly off...
   */
+  // not get first measuremnt
+  is_initialized_ = false;
+
+  // set state dimension
+  n_x_ = 5;
+  // set augmented dimension
+  n_aug_ = 7;
+  // define spreading parameter
+  lambda_ = 3 - n_aug_;
+
+  // initializes predicted sigma points
+  Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
+  Xsig_pred_.fill(0);
+
+  // initialize weights of sigma points
+  weights_ = VectorXd(2*n_aug_+1);
+  weights_.fill(1 / (2*(lambda_ + n_aug_)));
+  weights_(0) = (lambda_ / (lambda_ + n_aug_));
+
 }
 
 UKF::~UKF() {}
@@ -66,6 +85,66 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   Complete this function! Make sure you switch between lidar and radar
   measurements.
   */
+
+  /*****************************************************************************
+   *  Initialization
+   ****************************************************************************/
+  if(!is_initialized_){
+    cout << "Start to Initialized!\n";
+    if (meas_package.sensor_type_ == MeasurementPackage::LASER){
+      // initialize state vector
+      x_ << meas_package.raw_measurements_[0],
+      meas_package.raw_measurements_[1],
+      0, 0, 0;
+    }else if(meas_package.sensor_type_ == MeasurementPackage::RADAR){
+      // covert radar from polar to cartesian coordinates
+      float r = meas_package.raw_measurements_[0];
+      float phi = meas_package.raw_measurements_[1];
+      float px = r * cos(phi);
+      float py = -1 * r * sin(phi);
+      x_ << px, py, 0, 0, 0;
+    }
+
+    // P covariance could initialize depend on sensor type
+    // but now just use identity matrix
+    P_ = MatrixXd::Identity(n_x_, n_x_);
+    time_us_ = meas_package.timestamp_;
+    cout << "x_ = \n" << x_ << endl;
+    cout << "P_ = \n" << P_ << endl;
+    // done initialize, no need to predict or update at first time
+    is_initialized_ = true;
+    cout << "Finish Init!\n";
+    return;
+  }
+
+  double dt = (meas_package.timestamp_ -  time_us_) / 1000000.0; // dt - expressed in seconds
+  time_us_ = meas_package.timestamp_;                            // update time stamp
+
+  /*****************************************************************************
+   *  prediction
+   ****************************************************************************/
+  cout << "prediction: dt=" << dt << endl;
+  Prediction(dt);
+
+
+  /*****************************************************************************
+   *  update
+   ****************************************************************************/
+  /**
+   TODO:
+     * Use the sensor type to perform the update step.
+     * Update the state and covariance matrices.
+   */
+  cout << "update!\n";
+  if(meas_package.sensor_type_ == MeasurementPackage::RADAR){
+    // Radar updates
+    UpdateRadar(meas_package);
+  }else{
+    // Lidar updares
+    UpdateLidar(meas_package);
+  }
+
+  return;
 }
 
 /**
