@@ -159,6 +159,121 @@ void UKF::Prediction(double delta_t) {
   Complete this function! Estimate the object's location. Modify the state
   vector, x_. Predict sigma points, the state, and the state covariance matrix.
   */
+
+  /*=== generate sigma points  ===*/
+  /*
+  lambda_ = 3 - n_x_;       // settingg spreading parameter for generating part.
+  MatrixXd Xsig = MatrixXd(n_x_, 2*n_x_ + 1);   // create sigma point matrix.
+  MatrixXd a = P_.llt().matrixL();  // calculate sqrt of p_
+
+  // set first column of sigma point matrix
+  Xsig.col(0) = x_;
+
+  // calculate remaining of simga point (p_k|k part)
+  for(int i=0; i<n_x_; ++i){
+    Xsig.col(i+1)      = x_ + sqrt(lambda_ + n_x_) * a.col(i);
+    Xsig.col(i+1+n_x_) = x_ - sqrt(lambda_ + n_x_) * a.col(i);
+  }
+  */
+
+  // augment sigma point with process noise
+  lambda_ = 3 - n_aug_;                                 // setting spreading parameter for augmenting.
+  VectorXd x_aug = VectorXd(n_aug_);                    // create augmented mean vector.
+  MatrixXd p_aug = MatrixXd(n_aug_, n_aug_);            // create augmented covariance.
+  MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1); // create augmented sigma point matrix.
+
+  // create augmented mean state
+  x_aug.head(n_x_) = x_;
+  for (int i = n_x_; i < n_aug_; i++) {
+    x_aug(i) = 0;
+  }
+
+  // create augmented covariance matrix
+  p_aug.fill(0.0);
+  p_aug.topLeftCorner(n_x_, n_x_) = P_;
+  p_aug.bottomRightCorner(n_aug_ - n_x_, n_aug_ - n_x_) << std_a_*std_a_, 0,
+    0, std_yawdd_*std_yawdd_;
+  // create sqare root matrix
+  MatrixXd l = p_aug.llt().matrixL();
+
+  // create augmented sigma points
+  Xsig_aug.col(0) = x_aug;
+  for (int i = 0; i < n_aug_; i++) {
+    Xsig_aug.col(i+1)        = x_aug + sqrt(lambda_ + n_aug_) * l.col(i);
+    Xsig_aug.col(i+1+n_aug_) = x_aug - sqrt(lambda_ + n_aug_) * l.col(i);
+  }
+
+  /*=== predict sigma points ===*/
+  // initialize predict sigma points
+  double dt_2 = delta_t * delta_t;
+  Xsig_pred_.fill(0.0);
+  for (int i = 0; i < 2*n_aug_+1; i++) {
+    // extract values for better readability
+    double p_x      = Xsig_aug(0, i);
+    double p_y      = Xsig_aug(1, i);
+    double v        = Xsig_aug(2, i);
+    double yaw      = Xsig_aug(3, i);
+    double yawd     = Xsig_aug(4, i);
+    double nu_a     = Xsig_aug(5, i);
+    double nu_yawdd = Xsig_aug(6, i);
+
+    // predicted state values
+    double px_p, py_p;
+
+    // avoid division by zero
+    if(fabs(yaw) > 1e-3){
+      px_p = p_x + (v/yaw) * ( sin(yaw + yawd*delta_t) - sin(yaw));
+      py_p = p_y + (v/yaw) * (-cos(yaw + yawd*delta_t) + cos(yaw));
+    }else{
+      px_p = p_x + v*delta_t*cos(yaw);
+      py_p = p_y + v*delta_t*sin(yaw);
+    }
+
+    double v_p = v;
+    double yaw_p = yaw + yawd*delta_t;
+    double yawd_p = yawd;
+
+    // add noise
+    px_p = px_p + 0.5*nu_a*dt_2 * cos(yaw);
+    py_p = py_p + 0.5*nu_a*dt_2 * sin(yaw);
+    v_p = v_p + nu_a*delta_t;
+
+    yaw_p = yaw_p + 0.5*nu_yawdd*dt_2;
+    yawd_p = yawd_p + nu_yawdd*delta_t;
+
+    // write predicted sigma point into right column
+    Xsig_pred_(0, i) = px_p;
+    Xsig_pred_(1, i) = py_p;
+    Xsig_pred_(2, i) = v_p;
+    Xsig_pred_(3, i) = yaw_p;
+    Xsig_pred_(4, i) = yawd_p;
+  }
+
+
+  /*=== Predict Mean and Covariance ===*/
+  // weight setting on in constructor
+  // predict state mean
+  x_.fill(0.0);
+  for(int i=0; i < n_x_; ++i){        // use row multiple to compute each x_(i)
+    x_(i) = Xsig_pred_.row(i) * weights_;
+  }
+
+  // predict state covariance matrix
+  P_.fill(0.0);
+  for(int i=0; i < 2*n_aug_+1; ++i){  // iterate over sigma points
+    // get state difference
+    MatrixXd del_x = Xsig_pred_.col(i) - x_;
+    // angle normalization
+    while(del_x(3) > M_PI){
+      del_x(3) -= 2.*M_PI;
+    }
+    while(del_x(3) < -M_PI){
+      del_x(3) += 2.*M_PI;
+    }
+
+    P_ += weights_(i) * del_x * del_x.transpose();
+  }
+
 }
 
 /**
