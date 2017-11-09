@@ -24,10 +24,10 @@ UKF::UKF() {
   P_ = MatrixXd(5, 5);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 30;
+  std_a_ = 1.2;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 30;
+  std_yawdd_ = 0.25*M_PI;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -101,7 +101,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       float r = meas_package.raw_measurements_[0];
       float phi = meas_package.raw_measurements_[1];
       float px = r * cos(phi);
-      float py = -1 * r * sin(phi);
+      float py = r * sin(phi);
       x_ << px, py, 0, 0, 0;
     }
 
@@ -111,6 +111,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     time_us_ = meas_package.timestamp_;
     cout << "x_ = \n" << x_ << endl;
     cout << "P_ = \n" << P_ << endl;
+    cout << "weights_ \n" << weights_ << endl;
     // done initialize, no need to predict or update at first time
     is_initialized_ = true;
     cout << "Finish Init!\n";
@@ -123,7 +124,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   /*****************************************************************************
    *  prediction
    ****************************************************************************/
-  cout << "prediction: dt=" << dt << endl;
   Prediction(dt);
 
 
@@ -135,7 +135,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
      * Use the sensor type to perform the update step.
      * Update the state and covariance matrices.
    */
-  cout << "update!\n";
   if(meas_package.sensor_type_ == MeasurementPackage::RADAR){
     // Radar updates
     UpdateRadar(meas_package);
@@ -221,9 +220,9 @@ void UKF::Prediction(double delta_t) {
     double px_p, py_p;
 
     // avoid division by zero
-    if(fabs(yaw) > 1e-3){
-      px_p = p_x + (v/yaw) * ( sin(yaw + yawd*delta_t) - sin(yaw));
-      py_p = p_y + (v/yaw) * (-cos(yaw + yawd*delta_t) + cos(yaw));
+    if(fabs(yawd) > 1e-3){
+      px_p = p_x + (v/yawd) * ( sin(yaw + yawd*delta_t) - sin(yaw));
+      py_p = p_y + (v/yawd) * (-cos(yaw + yawd*delta_t) + cos(yaw));
     }else{
       px_p = p_x + v*delta_t*cos(yaw);
       py_p = p_y + v*delta_t*sin(yaw);
@@ -364,8 +363,8 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
   // Normalized Innovation Squared (NIS)
   double eps = diff_z.transpose() * S.inverse() * diff_z;
-  //if(eps > 6.)
-    //cout << "Lidar NIS too large: "<< eps << endl;
+  if(eps > 6.)
+    cout << "Lidar NIS too large: "<< eps << endl;
 
 }
 
@@ -481,7 +480,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
   // Normalized Innovation Squared (NIS)
   double eps = diff_z.transpose() * S.inverse() * diff_z;
-  //if(eps > 8)
-    //cout << "Radar NIS too large: "<< eps << endl;
+  if(eps > 8)
+    cout << "Radar NIS too large: "<< eps << endl;
 
 }
